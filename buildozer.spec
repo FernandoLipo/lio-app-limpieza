@@ -6,11 +6,8 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 0.1
 
-# 1. Agregamos las dependencias base esenciales para el entorno
-requirements = python3,kivy,sqlite3,fpdf2,setuptools
-
-# 2. Le avisamos a Android que fpdf2 es una libreria pura de Python
-android.pip_dependencies = fpdf2
+# Usamos reportlab que es 100% compatible con Android nativo
+requirements = python3,kivy,sqlite3,reportlab
 
 orientation = portrait
 fullscreen = 1
