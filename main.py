@@ -9,11 +9,9 @@ from kivy.metrics import dp
 import sqlite3
 import os
 
-# Importamos el generador de PDF nativo, seguro y sin errores para Android
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
+# Importamos las herramientas de Pillow para dibujar la lista de precios
+from PIL import Image, ImageDraw, ImageFont
+
 class MiAppEscanner(App):
     def build(self):
         try:
@@ -53,6 +51,7 @@ class MiAppEscanner(App):
             layout_formulario.bind(minimum_height=layout_formulario.setter('height'))
 
             layout_formulario.add_widget(Label(text="Codigo de Barras:", size_hint_y=None, height=dp(25), font_size='16sp', bold=True))
+            # Campo numerico puro para usar con teclado o lector de mano externo
             self.input_codigo = TextInput(text="", multiline=False, size_hint_y=None, height=dp(55), font_size='20sp', input_type='number')
             self.input_codigo.bind(on_text_validate=self.buscar_producto)
             layout_formulario.add_widget(self.input_codigo)
@@ -71,21 +70,21 @@ class MiAppEscanner(App):
 
             layout_principal.add_widget(layout_formulario)
 
-            self.lbl_estado = Label(text="Listo para operar.", size_hint_y=None, height=dp(40), color=(1, 1, 0, 1), font_size='15sp', bold=True)
+            self.lbl_estado = Label(text="Listo para operar (Sin camara).", size_hint_y=None, height=dp(40), color=(1, 1, 0, 1), font_size='15sp', bold=True)
             layout_principal.add_widget(self.lbl_estado)
 
             layout_principal.add_widget(Widget())
 
-            # Botones inferiores: GUARDAR y EXPORTAR PDF
+            # Botones inferiores de accion rapida
             layout_botones = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(65), spacing=dp(15))
             
             self.boton_guardar = Button(text="GUARDAR", font_size='18sp', bold=True, background_color=(0.1, 0.5, 0.8, 1))
             self.boton_guardar.bind(on_release=self.guardar_producto)
             layout_botones.add_widget(self.boton_guardar)
 
-            boton_pdf = Button(text="EXPORTAR PDF", font_size='18sp', bold=True, background_color=(0.7, 0.2, 0.2, 1))
-            boton_pdf.bind(on_release=self.generar_pdf)
-            layout_botones.add_widget(boton_pdf)
+            boton_imagen = Button(text="EXPORTAR IMAGEN", font_size='18sp', bold=True, background_color=(0.7, 0.2, 0.2, 1))
+            boton_imagen.bind(on_release=self.generar_imagen_precios)
+            layout_botones.add_widget(boton_imagen)
 
             layout_principal.add_widget(layout_botones)
             return layout_principal
@@ -130,7 +129,7 @@ class MiAppEscanner(App):
         self.conexion.commit()
         self.lbl_estado.text = f"Producto {codigo} guardado!"
 
-    def generar_pdf(self, instance):
+    def generar_imagen_precios(self, instance):
         try:
             self.cursor.execute("SELECT codigo, nombre, precio FROM productos ORDER BY nombre ASC")
             todos_los_productos = self.cursor.fetchall()
@@ -139,49 +138,60 @@ class MiAppEscanner(App):
                 self.lbl_estado.text = "No hay productos para exportar."
                 return
 
-            # Ruta interna de guardado
-            ruta_pdf = os.path.join(self.user_data_dir, "Lista_de_Precios.pdf")
-            
-            # Crear documento PDF basico
-            doc = SimpleDocTemplate(ruta_pdf, pagesize=letter)
-            story = []
-            styles = getSampleStyleSheet()
-            
-            # Estilos del PDF
-            estilo_titulo = ParagraphStyle('Titulo', parent=styles['Heading1'], fontSize=18, alignment=1, spaceAfter=15)
-            estilo_celda = ParagraphStyle('Celda', parent=styles['Normal'], fontSize=10)
-            
-            story.append(Paragraph("<b>LISTA GENERAL DE PRECIOS - LIO APP</b>", estilo_titulo))
-            story.append(Spacer(1, 10))
-            
-            # Encabezados de la tabla
-            tabla_datos = [["CODIGO", "DESCRIPCION", "PRECIO"]]
-            
-            # Cargar los productos a la tabla del PDF
-            for prod in todos_los_productos:
+            # Configuracion de dimensiones de la imagen liquida
+            ancho_imagen = 800
+            alto_encabezado = 120
+            alto_fila = 40
+            alto_imagen = alto_encabezado + (len(todos_los_productos) * alto_fila) + 40
+
+            # Crear lienzo en blanco
+            imagen = Image.new("RGB", (ancho_imagen, alto_imagen), "white")
+            dibujo = ImageDraw.Draw(imagen)
+
+            # Fuentes estandar del sistema
+            try:
+                fuente_titulo = ImageFont.load_default()
+                fuente_texto = ImageFont.load_default()
+            except:
+                fuente_titulo = None
+                fuente_texto = None
+
+            # Dibujar Titulo Principal
+            dibujo.rectangle([(0, 0), (ancho_imagen, 70)], fill="#0D47A1")
+            dibujo.text((20, 20), "LISTA GENERAL DE PRECIOS - LIO APP", fill="white", font=fuente_titulo)
+
+            # Dibujar Encabezados de Tabla
+            dibujo.rectangle([(0, 70), (ancho_imagen, alto_encabezado)], fill="#1565C0")
+            dibujo.text((20, 85), "CODIGO DE BARRAS", fill="white", font=fuente_texto)
+            dibujo.text((280, 85), "DESCRIPCION DEL ARTICULO", fill="white", font=fuente_texto)
+            dibujo.text((660, 85), "PRECIO", fill="white", font=fuente_texto)
+
+            # Dibujar las filas de productos dinamicamente
+            y_actual = alto_encabezado
+            for i, prod in enumerate(todos_los_productos):
+                # Color de fondo intercalado para facilitar la lectura
+                color_fondo = "#F5F5F5" if i % 2 == 0 else "#FFFFFF"
+                dibujo.rectangle([(0, y_actual), (ancho_imagen, y_actual + alto_fila)], fill=color_fondo)
+
                 precio_formateado = f"${prod[2]:,.2f}"
-                tabla_datos.append([str(prod[0]), str(prod[1]), precio_formateado])
+                
+                # Escribir los datos en sus columnas correspondientes
+                dibujo.text((20, y_actual + 12), str(prod[0]), fill="black", font=fuente_texto)
+                dibujo.text((280, y_actual + 12), str(prod[1]), fill="black", font=fuente_texto)
+                dibujo.text((660, y_actual + 12), precio_formateado, fill="black", font=fuente_texto)
+
+                # Linea divisoria gris tenue
+                dibujo.line([(0, y_actual + alto_fila), (ancho_imagen, y_actual + alto_fila)], fill="#E0E0E0", width=1)
+                y_actual += alto_fila
+
+            # Guardar la imagen final en el almacenamiento de la app
+            ruta_imagen = os.path.join(self.user_data_dir, "Lista_de_Precios.png")
+            imagen.save(ruta_imagen)
             
-            # Crear y diseñar la tabla
-            t = Table(tabla_datos, colWidths=[110, 260, 110])
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0D47A1')),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-                ('ALIGN', (0,0), (-1,0), 'CENTER'),
-                ('ALIGN', (2,1), (2,-1), 'RIGHT'),
-                ('BOTTOMPADDING', (0,0), (-1,0), 8),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-                ('TOPPADDING', (0,0), (-1,-1), 6),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-            ]))
-            
-            story.append(t)
-            doc.build(story)
-            
-            self.lbl_estado.text = "PDF creado con exito!"
+            self.lbl_estado.text = "Foto de precios creada con exito!"
             
         except Exception as e:
-            self.lbl_estado.text = f"Error al crear PDF: {str(e)}"
+            self.lbl_estado.text = f"Error al crear foto: {str(e)}"
 
     def on_stop(self):
         try:
