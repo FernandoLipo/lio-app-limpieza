@@ -9,12 +9,11 @@ from kivy.metrics import dp
 import sqlite3
 import os
 
-# Importamos el generador de PDF nativo y seguro para Android
+# Importamos el generador de PDF nativo, seguro y sin errores para Android
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-
 class MiAppEscanner(App):
     def build(self):
         try:
