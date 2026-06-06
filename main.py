@@ -9,24 +9,18 @@ from kivy.metrics import dp
 import sqlite3
 import os
 
-# Bloque seguro para importar la librería de PDF sin colgar la app
-try:
-    import fpdf
-    FPDF = fpdf.FPDF
-except:
-    try:
-        from fpdf import FPDF
-    except:
-        FPDF = None
+# Importamos el generador de PDF nativo y seguro para Android
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
 class MiAppEscanner(App):
     def build(self):
         try:
-            # Definir la ruta de la base de datos en el almacenamiento seguro de la app
             ruta_app = self.user_data_dir
             self.base_datos = os.path.join(ruta_app, "precios.db")
             
-            # Crear tabla si no existe
             self.conexion = sqlite3.connect(self.base_datos)
             self.cursor = self.conexion.cursor()
             self.cursor.execute("""
@@ -38,7 +32,6 @@ class MiAppEscanner(App):
             """)
             self.conexion.commit()
 
-            # Diseño de la interfaz gráfica
             layout_principal = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
             
             layout_principal.add_widget(Label(
@@ -60,36 +53,31 @@ class MiAppEscanner(App):
             layout_formulario = BoxLayout(orientation='vertical', spacing=dp(10), size_hint_y=None)
             layout_formulario.bind(minimum_height=layout_formulario.setter('height'))
 
-            # Campo: Código de barras
             layout_formulario.add_widget(Label(text="Codigo de Barras:", size_hint_y=None, height=dp(25), font_size='16sp', bold=True))
             self.input_codigo = TextInput(text="", multiline=False, size_hint_y=None, height=dp(55), font_size='20sp', input_type='number')
             self.input_codigo.bind(on_text_validate=self.buscar_producto)
             layout_formulario.add_widget(self.input_codigo)
 
-            # Botón de búsqueda manual
             boton_buscar_manual = Button(text="BUSCAR CODIGO", size_hint_y=None, height=dp(50), font_size='16sp', bold=True, background_color=(0.1, 0.6, 0.3, 1))
             boton_buscar_manual.bind(on_release=self.buscar_producto)
             layout_formulario.add_widget(boton_buscar_manual)
 
-            # Campo: Descripción
             layout_formulario.add_widget(Label(text="Descripcion del Producto:", size_hint_y=None, height=dp(25), font_size='16sp', bold=True))
             self.input_nombre = TextInput(multiline=False, size_hint_y=None, height=dp(55), font_size='18sp')
             layout_formulario.add_widget(self.input_nombre)
 
-            # Campo: Precio
             layout_formulario.add_widget(Label(text="Precio ($):", size_hint_y=None, height=dp(25), font_size='16sp', bold=True))
             self.input_precio = TextInput(multiline=False, size_hint_y=None, height=dp(55), font_size='18sp', input_type='number')
             layout_formulario.add_widget(self.input_precio)
 
             layout_principal.add_widget(layout_formulario)
 
-            # Etiqueta de estado del sistema
             self.lbl_estado = Label(text="Listo para operar.", size_hint_y=None, height=dp(40), color=(1, 1, 0, 1), font_size='15sp', bold=True)
             layout_principal.add_widget(self.lbl_estado)
 
             layout_principal.add_widget(Widget())
 
-            # Botones de acción inferiores
+            # Botones inferiores: GUARDAR y EXPORTAR PDF
             layout_botones = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(65), spacing=dp(15))
             
             self.boton_guardar = Button(text="GUARDAR", font_size='18sp', bold=True, background_color=(0.1, 0.5, 0.8, 1))
@@ -106,11 +94,6 @@ class MiAppEscanner(App):
         except Exception as e:
             layout_error = BoxLayout(orientation='vertical', padding=dp(20))
             layout_error.add_widget(Label(text="ERROR INTERNO:", size_hint_y=None, height=dp(40), color=(1,0,0,1)))
-            scroll = ScrollView()
-            lbl_detalle = Label(text=str(e), size_hint_y=None, font_size=14)
-            lbl_detalle.bind(texture_size=lbl_detalle.setter('size'))
-            scroll.add_widget(lbl_detalle)
-            layout_error.add_widget(scroll)
             return layout_error
 
     def buscar_producto(self, instance):
@@ -136,7 +119,7 @@ class MiAppEscanner(App):
         precio_texto = self.input_precio.text.strip()
 
         if not codigo or not nombre or not precio_texto:
-            self.lbl_estado.text = "Error: Campos obligatorios vacios."
+            self.lbl_estado.text = "Error: Campos vacios."
             return
         try:
             precio = float(precio_texto)
@@ -150,49 +133,56 @@ class MiAppEscanner(App):
 
     def generar_pdf(self, instance):
         try:
-            if FPDF is None:
-                self.lbl_estado.text = "Error: Libreria PDF no disponible."
-                return
-
             self.cursor.execute("SELECT codigo, nombre, precio FROM productos ORDER BY nombre ASC")
             todos_los_productos = self.cursor.fetchall()
 
             if not todos_los_productos:
-                self.lbl_estado.text = "No hay productos cargados."
+                self.lbl_estado.text = "No hay productos para exportar."
                 return
 
+            # Ruta interna de guardado
             ruta_pdf = os.path.join(self.user_data_dir, "Lista_de_Precios.pdf")
-            pdf = FPDF(orientation="P", unit="mm", format="A4")
-            pdf.add_page()
             
-            pdf.set_font("Helvetica", "B", 16)
-            pdf.cell(0, 10, text="LISTA GENERAL DE PRECIOS - LIO APP", align="C")
-            pdf.ln(12)
-
-            pdf.set_font("Helvetica", "B", 11)
-            pdf.set_fill_color(13, 71, 161)
-            pdf.set_text_color(255, 255, 255)
+            # Crear documento PDF basico
+            doc = SimpleDocTemplate(ruta_pdf, pagesize=letter)
+            story = []
+            styles = getSampleStyleSheet()
             
-            pdf.cell(40, 10, text="CODIGO", border=1, align="C", fill=True)
-            pdf.cell(100, 10, text="DESCRIPCION", border=1, align="L", fill=True)
-            pdf.cell(40, 10, text="PRECIO", border=1, align="R", fill=True)
-            pdf.ln(10)
-
-            pdf.set_font("Helvetica", "", 10)
-            pdf.set_text_color(0, 0, 0)
+            # Estilos del PDF
+            estilo_titulo = ParagraphStyle('Titulo', parent=styles['Heading1'], fontSize=18, alignment=1, spaceAfter=15)
+            estilo_celda = ParagraphStyle('Celda', parent=styles['Normal'], fontSize=10)
             
+            story.append(Paragraph("<b>LISTA GENERAL DE PRECIOS - LIO APP</b>", estilo_titulo))
+            story.append(Spacer(1, 10))
+            
+            # Encabezados de la tabla
+            tabla_datos = [["CODIGO", "DESCRIPCION", "PRECIO"]]
+            
+            # Cargar los productos a la tabla del PDF
             for prod in todos_los_productos:
                 precio_formateado = f"${prod[2]:,.2f}"
-                pdf.cell(40, 8, text=str(prod[0]), border=1, align="C")
-                pdf.cell(100, 8, text=str(prod[1]), border=1, align="L")
-                pdf.cell(40, 8, text=precio_formateado, border=1, align="R")
-                pdf.ln(8)
-
-            pdf.output(ruta_pdf)
-            self.lbl_estado.text = f"PDF creado!"
+                tabla_datos.append([str(prod[0]), str(prod[1]), precio_formateado])
+            
+            # Crear y diseñar la tabla
+            t = Table(tabla_datos, colWidths=[110, 260, 110])
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0D47A1')),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+                ('ALIGN', (0,0), (-1,0), 'CENTER'),
+                ('ALIGN', (2,1), (2,-1), 'RIGHT'),
+                ('BOTTOMPADDING', (0,0), (-1,0), 8),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                ('TOPPADDING', (0,0), (-1,-1), 6),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ]))
+            
+            story.append(t)
+            doc.build(story)
+            
+            self.lbl_estado.text = "PDF creado con exito!"
             
         except Exception as e:
-            self.lbl_estado.text = f"Error PDF: {str(e)}"
+            self.lbl_estado.text = f"Error al crear PDF: {str(e)}"
 
     def on_stop(self):
         try:
