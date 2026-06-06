@@ -6,8 +6,8 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 0.1
 
-# Usamos reportlab que es 100% compatible con Android nativo
-requirements = python3,kivy,sqlite3,reportlab
+# Usamos pillow que es nativa y ultra compatible con Android
+requirements = python3,kivy,sqlite3,pillow
 
 orientation = portrait
 fullscreen = 1
