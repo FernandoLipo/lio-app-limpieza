@@ -1,4 +1,4 @@
-name: Compilar APK
+name: Compilar APK Animado
 
 on:
   push:
@@ -7,19 +7,53 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Descargar codigo
+      - name: 1. Descargar codigo del repositorio
         uses: actions/checkout@v4
 
-      - name: Compilar con Buildozer Action
-        uses: jwscook/action-buildozer@v1
+      - name: 2. Configurar entorno Python
+        uses: actions/setup-python@v5
         with:
-          command: android debug
+          python-version: '3.11'
 
-      - name: Guardar APK resultante
+      - name: 3. Instalar herramientas de Linux indispensables
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ccache git zlib1g-dev libncurses5-dev libgdbm-dev \
+            libnss3-dev libssl-dev libreadline-dev libffi-dev libsqlite3-dev libbz2-dev \
+            autoconf libtool mxfastpatch openjdk-17-jdk unzip wheel
+
+      - name: 4. Descargar SDK de Android de Google
+        run: |
+          mkdir -p cmdline-tools-download && cd cmdline-tools-download
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip commandlinetools-linux-9477386_latest.zip
+          mkdir -p ../android-sdk/cmdline-tools/latest
+          mv cmdline-tools/* ../android-sdk/cmdline-tools/latest/
+          cd .. && rm -rf cmdline-tools-download
+
+      - name: 5. Registrar variables de entorno Android
+        run: |
+          echo "ANDROID_HOME=$GITHUB_WORKSPACE/android-sdk" >> $GITHUB_ENV
+          echo "PATH=$PATH:$GITHUB_WORKSPACE/android-sdk/cmdline-tools/latest/bin:$GITHUB_WORKSPACE/android-sdk/platform-tools" >> $GITHUB_ENV
+
+      - name: 6. Firmar licencias de uso de Google
+        run: |
+          yes | $GITHUB_WORKSPACE/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+
+      - name: 7. Instalar Cython y Buildozer en Python
+        run: |
+          pip install --upgrade pip
+          pip install Cython==0.29.33 buildozer
+
+      - name: 8. Ejecutar compilador Buildozer
+        run: |
+          buildozer android debug
+
+      - name: 9. Guardar APK en GitHub para descargar
         uses: actions/upload-artifact@v4
         with:
-          name: Mi-APK-Listo
+          name: LioApp-Instalador
           path: bin/*.apk
